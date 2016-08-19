@@ -82,3 +82,103 @@ def calc_emd_ref(ref_data,data,row_tree,alpha=1.0,beta=0.0):
         emd += (2**((1.0-level)*alpha))*distances
 
     return emd
+
+def calc_2demd(data,row_tree, col_tree, row_alpha=1.0, row_beta=0.0, 
+	col_alpha=1.0, col_beta=0.0, exc_sing=False):
+    """
+    Calculates 2D EMD on database of data using a tree on the rows and columns.
+    each level is weighted by 2**((1-level)*alpha)
+    each folder size (fraction) is raised to the beta power for weighting.
+    """
+    nrows,ncols,nchannels = np.shape(data)
+    assert nrows == row_tree.size, "Tree size must match # rows in data."
+    assert ncols == col_tree.size, "Tree size must match # cols in data."
+    
+    row_folder_fraction = np.array([((node.size*1.0/nrows)**row_beta)*
+                                (2.0**((1.0-node.level)*row_alpha))
+                                 for node in row_tree])
+    col_folder_fraction = np.array([((node.size*1.0/ncols)**col_beta)*
+                                (2.0**((1.0-node.level)*col_alpha))
+                                 for node in col_tree])
+    if exc_sing:
+        for node in row_tree:
+            if node.size == 1:
+                row_folder_fraction[node.idx] = 0.0
+        for node in col_tree:
+            if node.size == 1:
+                col_folder_fraction[node.idx] = 0.0
+    folder_frac = np.outer(row_folder_fraction, col_folder_fraction)
+                      
+    sums3d = np.zeros((nchannels,np.size(folder_frac)))
+    for t in range(0,nchannels):
+        avgs = tree_util.bitree_averages(data[:,:,t], row_tree, col_tree)
+        avgs = folder_frac * avgs
+        sums3d[t,:] = np.reshape(avgs,(1,-1))
+    
+    pds = spsp.distance.pdist(sums3d, "cityblock")
+    distances = spsp.distance.squareform(pds)
+
+    return distances
+
+def calc_2demd_ref(ref_data,data,row_tree,col_tree, row_alpha=1.0, row_beta=0.0, 
+	col_alpha=1.0, col_beta=0.0, exc_sing=False):
+    """
+    Calculates the EMD from a set of points to a reference set of points
+    The columns of ref_data are each a reference set point.
+    The columns of data are each a point outside the reference set.
+    """
+    if data.ndim == 2:
+        ref_rows,ref_cols = np.shape(ref_data)
+        rows,cols = np.shape(data)
+    else:
+        ref_rows,ref_cols,ref_chans = np.shape(ref_data)
+        rows,cols,chans = np.shape(data)
+
+    col_singletons_start = col_tree.tree_size - cols
+    row_singletons_start = row_tree.tree_size - rows
+            
+    assert rows == row_tree.size, "Tree size must match # rows in data."
+    assert ref_rows == rows, "Mismatched row #: reference and sample sets."
+    assert cols == col_tree.size, "Tree size must match # cols in data."
+    assert ref_cols == cols, "Mismatched col #: reference and sample sets."
+
+    row_folder_fraction = np.array([((node.size*1.0/rows)**row_beta)*
+                                (2.0**((1.0-node.level)*row_alpha))
+                                 for node in row_tree])
+    col_folder_fraction = np.array([((node.size*1.0/cols)**col_beta)*
+                                (2.0**((1.0-node.level)*col_alpha))
+                                 for node in col_tree])
+    if exc_sing:
+        for node in row_tree:
+            if node.size == 1:
+                row_folder_fraction[node.idx] = 0.0
+        for node in col_tree:
+            if node.size == 1:
+                col_folder_fraction[node.idx] = 0.0
+    folder_frac = np.outer(row_folder_fraction, col_folder_fraction)
+ 
+    if data.ndim == 2:
+        ref_coefs = tree_util.bitree_averages(ref_data, row_tree, col_tree)
+        coefs = tree_util.bitree_averages(data, row_tree, col_tree)
+        coefs = folder_frac * coefs
+        ref_coefs = folder_frac * ref_coefs
+        
+        return spsp.distance.cityblock(coefs.flatten(),ref_coefs.flatten())
+    else:
+               
+        sums3d = np.zeros((chans,np.size(folder_frac)))
+        for t in range(0,chans):
+            avgs = tree_util.bitree_averages(data[:,:,t], row_tree, col_tree)
+            avgs = folder_frac * avgs
+            
+            sums3d[t,:] = np.reshape(avgs,(1,-1))
+        
+        ref_sums3d = np.zeros((ref_chans,np.size(folder_frac)))
+        for t in range(0,ref_chans):
+            avgs = tree_util.bitree_averages(ref_data[:,:,t], row_tree, col_tree)
+            avgs = folder_frac * avgs
+            
+            ref_sums3d[t,:] = np.reshape(avgs,(1,-1))
+          
+        return spsp.distance.cdist(sums3d,ref_sums3d, "cityblock")       
+    

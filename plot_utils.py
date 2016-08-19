@@ -178,8 +178,12 @@ def plot_embedding(vecs,vals,**kwargs):
         c = kwargs["nodecolors"]
     else:
         c = 'b'
-    
-    ax.scatter3D(x,y,z,c=c,norm=binnorm,cmap=rbmap)
+
+    if "noNorm" in kwargs:
+        p=ax.scatter3D(x,y,z,c=c,depthshade=False)
+    else:
+        p=ax.scatter3D(x,y,z,c=c,depthshade=False,norm=binnorm,cmap=rbmap)
+
     if "nodt" not in kwargs:
         ax.set_title("{0} $t={1:1.3}$".format(title,diff_time))
     else:
@@ -187,3 +191,9 @@ def plot_embedding(vecs,vals,**kwargs):
         
     if "azim" in kwargs:
         ax.view_init(kwargs["elev"],kwargs["azim"])
+        
+    if "colorbar" in kwargs:
+        if kwargs["colorbar"]:
+            plt.colorbar(p,ax=ax)
+
+

@@ -277,6 +277,12 @@ class ClusterTreeNode(object):
     
     def copy(self):
         return copy.deepcopy(self)
+    
+    def leaves_idx(self, node_ind):
+
+        leaves = self.nodes_list[node_ind].dfs_leaves()
+        leave_idxs = [node.elements[0] for node in leaves]
+        return leave_idxs
 
 def dyadic_tree(n):
     """
