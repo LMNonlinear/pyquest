@@ -275,6 +275,16 @@ class ClusterTreeNode(object):
                     return child.tree_distance(i,j)
             return 1.0*self.size/tree_size
     
+    def tree_distance_mat(self):
+        leaves_idx = self.leaves_idx(0)
+        sz = self.size
+        D = np.zeros([sz,sz])
+        for i in range(sz):
+            for j in range(i,sz):
+                D[i,j] = self.tree_distance(i,j)
+                D[j,i] = D[i,j]
+        return D
+    
     def copy(self):
         return copy.deepcopy(self)
     

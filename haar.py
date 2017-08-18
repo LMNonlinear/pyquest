@@ -62,7 +62,7 @@ def compute_haar(t,return_nodes=False,norm="L2"):
                                       np.array([x.size for x in schildren]),
                                       norm)
             
-            for i in xrange(1,node_size):
+            for i in xrange(1,node_size): #ignores node with 1 child
                 #each basis vector will be a column of the basis
                 for j,child in enumerate(schildren):
                     haar_basis[child.elements,cur_col] = basis_vecs[j,i]
@@ -144,5 +144,9 @@ def inverse_bihaar_transform(coefs,row_tree,col_tree):
     matrix = col_hb.dot(row_transform.T)
     return matrix.T
     
+def coherency(data,row_tree,col_tree):
+    coefs = bihaar_transform(data,row_tree,col_tree)
+    return np.sum(np.absolute(coefs))
+
     
     

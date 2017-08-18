@@ -7,6 +7,7 @@ import numpy as np
 import tree_util
 import scipy.spatial as spsp
 import collections
+import transform
 
 def emd_dual_aff(emd,eps=1.0):
     """
@@ -21,7 +22,7 @@ def emd_dual_aff(emd,eps=1.0):
     
     return np.exp(-emd/epall)
 
-def calc_emd(data,row_tree,alpha=1.0,beta=0.0,exc_sing=False):
+def calc_emd(data,row_tree,alpha=1.0,beta=0.0,exc_sing=False,weights=None):
     """
     Calculates the EMD on the *columns* from data and a tree on the rows.
     each level is weighted by 2**((1-level)*alpha)
@@ -33,6 +34,9 @@ def calc_emd(data,row_tree,alpha=1.0,beta=0.0,exc_sing=False):
     folder_fraction = np.array([((node.size*1.0/rows)**beta)*
                                 (2.0**((1.0-node.level)*alpha))
                                  for node in row_tree])
+    if weights is not None:
+        folder_fraction = folder_fraction*weights
+    
     if exc_sing:
         for node in row_tree:
             if node.size == 1:
@@ -45,6 +49,46 @@ def calc_emd(data,row_tree,alpha=1.0,beta=0.0,exc_sing=False):
     distances = spsp.distance.squareform(pds)
 
     return distances
+
+def calc_emd_multi_tree(data,row_trees,alpha=1.0,beta=0.0,exc_sing=False):
+    rows,cols = np.shape(data)
+
+    ext_vecs = np.array([]).reshape(0,cols)
+    
+    n_trees = len(row_trees)
+    
+    for i in range(ntrees):
+        row_tree = row_trees[i]
+        assert rows == row_tree.size, "Tree size must match # rows in data."
+
+        folder_fraction = np.array([((node.size*1.0/rows)**beta)*
+                                    (2.0**((1.0-node.level)*alpha))
+                                     for node in row_tree])
+        if exc_sing:
+            for node in row_tree:
+                if node.size == 1:
+                    folder_fraction[node.idx] = 0.0
+        coefs = transform.averaging(data,row_tree)
+        ext_vecs = np.vstack([ext_vecs, np.diag(folder_fraction).dot(coefs)]) 
+
+    pds = spsp.distance.pdist(ext_vecs.T,"cityblock")
+    distances = spsp.distance.squareform(pds)
+    
+    return distances / float(n_trees)
+    
+def calc_emd_multi_tree_ref(ref_data,data,row_trees,alpha=1.0,beta=0.0,exc_sing=False):
+    rows,cols = np.shape(data)
+    ref_rows,ref_cols = np.shape(ref_data)
+    
+    emd = np.zeros([ref_cols,cols])
+    ntrees = len(row_trees)
+    
+    for i in range(ntrees):
+        row_tree = row_trees[i]
+        emd += calc_emd_ref(ref_data,data,row_tree,alpha=alpha,beta=beta)
+    
+    return emd/ float(ntrees)
+
     
 def calc_emd_ref(ref_data,data,row_tree,alpha=1.0,beta=0.0):
     """
@@ -82,9 +126,38 @@ def calc_emd_ref(ref_data,data,row_tree,alpha=1.0,beta=0.0):
         emd += (2**((1.0-level)*alpha))*distances
 
     return emd
+    
+def calc_emd_ref2(ref_data,data,row_tree,alpha=1.0,beta=0.0,weights=None):
+    """
+    Calculates the EMD from a set of points to a reference set of points
+    The columns of ref_data are each a reference set point.
+    The columns of data are each a point outside the reference set.
+    """
+    ref_rows,ref_cols = np.shape(ref_data)
+    rows,cols = np.shape(data)
+    assert rows == row_tree.size, "Tree size must match # rows in data."
+    assert ref_rows == rows, "Mismatched row #: reference and sample sets."
+
+    emd = np.zeros([ref_cols,cols])
+    
+    averages_mat = transform.tree_averages_mat(row_tree)
+    ref_coefs = averages_mat.dot(ref_data)
+    coefs = averages_mat.dot(data)
+    
+    folder_fraction = np.array([((node.size*1.0/rows)**beta)*
+                                (2.0**((1.0-node.level)*alpha))
+                                 for node in row_tree])
+    if weights is not None:
+        folder_fraction = folder_fraction*weights
+    
+    coefs = np.diag(folder_fraction).dot(coefs)    
+    ref_coefs = np.diag(folder_fraction).dot(ref_coefs)   
+    
+    emd = spsp.distance.cdist(ref_coefs.T,coefs.T,"cityblock")
+    return emd
 
 def calc_2demd(data,row_tree, col_tree, row_alpha=1.0, row_beta=0.0, 
-	col_alpha=1.0, col_beta=0.0, exc_sing=False):
+	col_alpha=1.0, col_beta=0.0, exc_sing=False, exc_raw=False):
     """
     Calculates 2D EMD on database of data using a tree on the rows and columns.
     each level is weighted by 2**((1-level)*alpha)
@@ -109,10 +182,22 @@ def calc_2demd(data,row_tree, col_tree, row_alpha=1.0, row_beta=0.0,
                 col_folder_fraction[node.idx] = 0.0
     folder_frac = np.outer(row_folder_fraction, col_folder_fraction)
                       
-    sums3d = np.zeros((nchannels,np.size(folder_frac)))
-    for t in range(0,nchannels):
+    avgs = tree_util.bitree_averages(data[:,:,0], row_tree, col_tree)
+    avgs = folder_frac * avgs
+    
+    if exc_raw:
+        col_singletons_start = col_tree.tree_size - ncols
+        row_singletons_start = row_tree.tree_size - nrows
+        avgs = avgs[:row_singletons_start,:col_singletons_start]
+    
+    sums3d = np.zeros((nchannels,np.size(avgs)))
+    
+    sums3d[0,:] = np.reshape(avgs,(1,-1))
+    for t in range(1,nchannels):
         avgs = tree_util.bitree_averages(data[:,:,t], row_tree, col_tree)
         avgs = folder_frac * avgs
+        if exc_raw:
+            avgs = avgs[:row_singletons_start,:col_singletons_start]
         sums3d[t,:] = np.reshape(avgs,(1,-1))
     
     pds = spsp.distance.pdist(sums3d, "cityblock")
@@ -121,7 +206,7 @@ def calc_2demd(data,row_tree, col_tree, row_alpha=1.0, row_beta=0.0,
     return distances
 
 def calc_2demd_ref(ref_data,data,row_tree,col_tree, row_alpha=1.0, row_beta=0.0, 
-	col_alpha=1.0, col_beta=0.0, exc_sing=False):
+	col_alpha=1.0, col_beta=0.0, exc_sing=False,exc_raw=False):
     """
     Calculates the EMD from a set of points to a reference set of points
     The columns of ref_data are each a reference set point.
@@ -163,12 +248,19 @@ def calc_2demd_ref(ref_data,data,row_tree,col_tree, row_alpha=1.0, row_beta=0.0,
         coefs = folder_frac * coefs
         ref_coefs = folder_frac * ref_coefs
         
+        if exc_raw:
+            avgs = avgs[:row_singletons_start,:col_singletons_start]
+        
         return spsp.distance.cityblock(coefs.flatten(),ref_coefs.flatten())
     else:
+        if exc_raw:
+            folder_frac = folder_frac[:row_singletons_start,:col_singletons_start] 
                
         sums3d = np.zeros((chans,np.size(folder_frac)))
         for t in range(0,chans):
             avgs = tree_util.bitree_averages(data[:,:,t], row_tree, col_tree)
+            if exc_raw:
+                avgs = avgs[:row_singletons_start,:col_singletons_start]
             avgs = folder_frac * avgs
             
             sums3d[t,:] = np.reshape(avgs,(1,-1))
@@ -176,6 +268,8 @@ def calc_2demd_ref(ref_data,data,row_tree,col_tree, row_alpha=1.0, row_beta=0.0,
         ref_sums3d = np.zeros((ref_chans,np.size(folder_frac)))
         for t in range(0,ref_chans):
             avgs = tree_util.bitree_averages(ref_data[:,:,t], row_tree, col_tree)
+            if exc_raw:
+                avgs = avgs[:row_singletons_start,:col_singletons_start]
             avgs = folder_frac * avgs
             
             ref_sums3d[t,:] = np.reshape(avgs,(1,-1))

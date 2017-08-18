@@ -97,7 +97,7 @@ def remove_mean(data):
     means = np.mean(data,axis=0)
     return data - means
 
-def gaussian_euclidean(data,knn=5,eps=1.0):
+def gaussian_euclidean(data,knn=5,eps=1.0, sym=True):
     """
     data: mxn numpy array.
     
@@ -114,8 +114,24 @@ def gaussian_euclidean(data,knn=5,eps=1.0):
         nn = sknn.NearestNeighbors(n_neighbors=knn)
         nn.fit(data.T)
         dists,_ = nn.kneighbors(data.T,knn,True)
-    medians = eps*np.median(dists,1)
-    return np.exp(-(row_distances**2/(medians**2)))
+    medians = eps*np.median(dists,1) #axis=None
+    medians[medians == 0] = 1
+    mat = np.exp(-(row_distances**2/(medians**2)))
+    if sym: # fixed bug: making affinity symmetric 
+        mat = (mat+mat.T)/2
+    return mat
+
+def sparse_gaussian_euclidean(data,knn=5,eps=1.0):
+	# sparse affinity untested #
+    import sklearn.neighbors as sknn
+    import scipy as sp
+    
+    D = sknn.kneighbors_graph(data.T, n_neighbors=knn, mode='distance')
+    medians = eps * np.median(D.data)
+    
+    vals = np.exp(-(D.data**2/(medians**2)))
+    mat = sp.sparse.csr_matrix( (vals,D.indices,D.indptr), np.shape(D) )
+    return (mat+mat.T)/2
 
 def threshold(affinity,threshold):
     """

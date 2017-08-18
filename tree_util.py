@@ -164,9 +164,8 @@ def tree_transform(data,row_tree):
             else:
                 coefs[node.idx,:] = avs[node.idx,:] - avs[node.parent.idx,:]
     return coefs
-
-
-def inverse_tree_transform(coefs,row_tree,threshold=0.0):
+    
+def inverse_tree_transform(coefs,row_tree,threshold=0.0,reject_inds=[]):
     """
     coefs is a set of tree_transform coefficients (size n)
     row_tree is a tree on the rows (tree_size n)
@@ -182,7 +181,7 @@ def inverse_tree_transform(coefs,row_tree,threshold=0.0):
     else:
         mat = np.zeros([row_tree.size,np.shape(coefs)[1]])
         for node in row_tree:
-            if node.size*1.0/n >= threshold:
+            if np.logical_and(node.size*1.0/n >= threshold,node.idx not in reject_inds):
                 mat[node.elements,:] += coefs[node.idx,:]
     
     return mat

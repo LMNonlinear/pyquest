@@ -5,17 +5,32 @@ markov.py: Function to calculate vectors and eigenvalues of Markov chain
 
 import numpy as np
 import scipy.sparse.linalg as spsl
+import scipy.sparse as sps
+
+#### sparse matrices untested  #####
 
 def make_markov_symmetric(data,thres=1e-8):
     """
     data is a (symmetric) affinity matrix. elements less than thres are zeroed.
     Returns a "symmetrized" and normalized version of the Markov chain matrix. 
     """    
-    d_mat = data*(data > thres)
-    rowsums = np.sum(d_mat,axis=1) + 1e-15
-    p_mat = d_mat/(np.outer(rowsums,rowsums))
-    d_mat2 = np.sqrt(np.sum(p_mat,axis=1)) + 1e-15
-    p_mat = p_mat/(np.outer(d_mat2,d_mat2))
+    
+    
+    if sps.issparse(data) == True:
+        d_mat = data.multiply(data > thres)
+        rowsums = 1.0/(d_mat.sum(axis=1) + 1e-15)
+        m,n =  np.shape(d_mat)
+        invD = sps.spdiags(rowsums.T, 0,m,n)
+        p_mat = invD * d_mat * invD
+        rowsums = np.sqrt(1.0/(p_mat.sum(axis=1) + 1e-15))
+        sqrtInvD = sps.spdiags(rowsums.T, 0, m,n)
+        p_mat = sqrtInvD * d_mat * sqrtInvD
+    else:
+        d_mat = data*(data > thres)
+        rowsums = np.sum(d_mat,axis=1) + 1e-15
+        p_mat = d_mat/(np.outer(rowsums,rowsums))
+        d_mat2 = np.sqrt(np.sum(p_mat,axis=1)) + 1e-15
+        p_mat = p_mat/(np.outer(d_mat2,d_mat2))
     return p_mat
 
 def make_markov_row_stoch(data,thres=1e-8):
@@ -23,9 +38,18 @@ def make_markov_row_stoch(data,thres=1e-8):
     data is a (symmetric) affinity matrix. elements less than thres are zeroed.
     Returns the row stochastic Markov matrix. 
     """    
-    d_mat = data*(data > thres)
-    rowsums = 1.0/(np.sum(d_mat,axis=1) + 1e-15)
-    p_mat = np.diag(rowsums).dot(d_mat)
+    
+    
+    if sps.issparse(data) == True:
+        d_mat = data.multiply(data > thres)
+        m,n =  np.shape(d_mat)
+        rowsums = 1.0/(d_mat.sum(axis=1) + 1e-15)
+        invD = sps.spdiags(rowsums.T, 0, m,n)
+        p_mat = invD * d_mat
+    else:
+        d_mat = data*(data > thres)
+        rowsums = 1.0/(np.sum(d_mat,axis=1) + 1e-15)
+        p_mat = np.diag(rowsums).dot(d_mat)
     return p_mat
 
 def markov_eigs(data,n_eigs,normalize=True,thres=1e-8):

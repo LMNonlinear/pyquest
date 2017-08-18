@@ -216,3 +216,10 @@ pip-log.txt
 
 #pickled files
 *.pickle
+
+#matlab files
+*.mat
+
+.ipynb_checkpoints
+
+*.png

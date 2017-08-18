@@ -166,4 +166,27 @@ def organize_diffusion(data,row_vecs,col_vecs,nstarts=10):
     
     j = l1_dist.argmin()
     return row_orders[j],col_orders[j]
+
+def organize_diffusion_rows(data,row_vecs,nstarts=10):
+    """
+        Short algorithm to recover a permutation of shuffled data based on
+        the diffusion embeddings of rows and columns
+        """
+    starts = np.random.randint(0,min(data.shape),nstarts)
+    l1_dist = np.zeros(len(starts))
+    row_orders = {}
+    for i in xrange(len(starts)):
+        row_order = nn_param(row_vecs,starts[i])
+        new_data = data[row_order,:]
+        row_sp = np.sum(np.abs(new_data -
+            np.roll(new_data,-1,axis=0)),axis=1).argmax()
+        row_order = nn_param(row_vecs,row_order[row_sp])
+        new_data = data[row_order,:]
+        row_sp = np.sum(np.abs(new_data -
+            np.roll(new_data,-1,axis=0)))
+        l1_dist[i] = row_sp
+        row_orders[i] = row_order
+    
+    j = l1_dist.argmin()
+    return row_orders[j]
     

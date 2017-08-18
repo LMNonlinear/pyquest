@@ -34,6 +34,8 @@ DEFAULT_DUAL_BETA = 1.0
 DEFAULT_N_ITERS = 3
 DEFAULT_N_TREES = 1
 
+DEFAULT_WEIGHTED = False
+
 class PyQuestParams(object):
     
     def __init__(self,init_aff_type,tree_type,dual_row_type,dual_col_type,
@@ -127,6 +129,10 @@ class PyQuestParams(object):
                 self.row_beta = kwargs["row_beta"]
             else:
                 self.row_beta = DEFAULT_DUAL_BETA
+            if "row_weighted" in kwargs:
+                self.row_weighted = kwargs["row_weighted"]
+            else:
+                self.row_weighted = DEFAULT_WEIGHTED    
             
         if self.col_affinity_type == DUAL_GAUSSIAN:
             if "col_epsilon" in kwargs:
@@ -143,6 +149,10 @@ class PyQuestParams(object):
                 self.col_beta = kwargs["col_beta"]
             else:
                 self.col_beta = DEFAULT_DUAL_BETA
+            if "col_weighted" in kwargs:
+                self.col_weighted = kwargs["col_weighted"]
+            else:
+                self.col_weighted = DEFAULT_WEIGHTED  
 
     def set_iters(self,**kwargs):
         if "n_iters" in kwargs:
@@ -174,16 +184,18 @@ class PyQuestRun(object):
 
 def pyquest(data,params):
     """
-    Runs the questionnaire on data with params. 
-    params is a PyQuestParams object.
+    Runs the questionnaire on data with params. params is a PyQuestParams object.
+	Starts by constructing the initial affinity on the rows of the matrix (default).
     """
-
+    
+    # construct row affinity
     if params.init_aff_type == INIT_AFF_COS_SIM:
         init_row_aff = affinity.mutual_cosine_similarity(
                             data.T,False,0,threshold=params.init_aff_threshold)
     elif params.init_aff_type == INIT_AFF_GAUSSIAN:
         init_row_aff = affinity.gaussian_euclidean(
                             data.T, params.init_aff_knn, params.init_aff_epsilon)
+                            
     
     #Initial row tree
     if params.row_tree_type == TREE_TYPE_BINARY:
@@ -203,12 +215,19 @@ def pyquest(data,params):
     # iterate over the questionnaire starting with columns and then rows in each iteration
     for i in xrange(params.n_iters):
         message = "Iteration {}: calculating column affinity...".format(i)
-
+        print message
         
         # calculating column affinity based on row tree
         #print "Beginning iteration {}".format(i)
         if params.col_affinity_type == DUAL_EMD:
-            col_emd = dual_affinity.calc_emd(data,dual_row_trees[-1],
+            if params.col_weighted == True:
+                print "weighted emd"
+                row_coefs = tree_util.tree_transform_mat(dual_row_trees[-1]).dot(data)
+                row_weights = np.sqrt(np.sum(row_coefs**2,axis = 1))
+                col_emd = dual_affinity.calc_emd(data,dual_row_trees[-1],
+                      alpha=0,beta=0,weights=row_weights)
+            else:
+                col_emd = dual_affinity.calc_emd(data,dual_row_trees[-1],
                      params.col_alpha,params.col_beta)
             col_aff = dual_affinity.emd_dual_aff(col_emd)
         elif params.col_affinity_type == DUAL_GAUSSIAN:
@@ -216,7 +235,7 @@ def pyquest(data,params):
             return None
         
         message = "Iteration {}: calculating column tree...".format(i)
-        
+        print message
         
         # constructing column tree
         if params.col_tree_type == TREE_TYPE_BINARY:
@@ -230,11 +249,18 @@ def pyquest(data,params):
         
         # column tree finished, now starting with rows
         message = "Iteration {}: calculating row affinity...".format(i)
-
+        print message
         
         # calculate row affinity based on column tree
         if params.row_affinity_type == DUAL_EMD:
-            row_emd = dual_affinity.calc_emd(data.T,dual_col_trees[-1],
+            if params.row_weighted == True:
+                print "weighted emd"
+                col_coefs = tree_util.tree_transform_mat(dual_col_trees[-1]).dot(data.T)
+                col_weights = np.sqrt(np.sum(col_coefs**2,axis = 1))
+                row_emd = dual_affinity.calc_emd(data.T,dual_col_trees[-1],
+                      alpha=0,beta=0,weights=col_weights)
+            else:
+                row_emd = dual_affinity.calc_emd(data.T,dual_col_trees[-1],
                      params.row_alpha,params.row_beta)
             row_aff = dual_affinity.emd_dual_aff(row_emd)
         elif params.row_affinity_type == DUAL_GAUSSIAN:
@@ -242,7 +268,7 @@ def pyquest(data,params):
             return None
  
         message = "Iteration {}: calculating row tree...".format(i)
-
+        print message
         
         # constructing row tree
         if params.row_tree_type == TREE_TYPE_BINARY:
