@@ -15,8 +15,9 @@ Added files:
 * transform.py
 * tree_transforms.ipynb (jupyter notebook demonstrating tree transforms)
 
-TODO: 
-add demo demonstrating multi-tree EMD and bi-organization local refinement
+A Matlab implementation can be found at https://github.com/gmishne/InformedGeometry-CoupledPendulum
+
+TODO: add demo demonstrating multi-tree EMD and bi-organization local refinement
 
 
 Aug. 2016
